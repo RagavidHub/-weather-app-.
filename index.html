@@ -185,6 +185,56 @@
       padding: 20px;
     }
 
+    .news {
+      padding: 20px;
+    }
+
+    .news-layout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .news-column {
+      display: grid;
+      gap: 12px;
+    }
+
+    .news-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .news-item {
+      display: grid;
+      gap: 6px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: color-mix(in srgb, var(--accent) 8%, var(--panel-strong));
+      text-decoration: none;
+      color: inherit;
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+
+    .news-item:hover,
+    .news-item:focus-visible {
+      transform: translateY(-1px);
+      filter: brightness(1.03);
+    }
+
+    .news-item p {
+      color: var(--text);
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .news-item span {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
     .air-quality {
       padding: 20px;
     }
@@ -255,6 +305,10 @@
     }
 
     @media (max-width: 680px) {
+      .news-layout {
+        grid-template-columns: 1fr;
+      }
+
       .air-grid,
       .forecast-grid {
         grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -275,6 +329,10 @@
       }
 
       .air-card {
+        background: var(--panel-strong);
+      }
+
+      .news-item {
         background: var(--panel-strong);
       }
     }
@@ -312,6 +370,26 @@
         <p id="air-summary">Loading air quality...</p>
       </div>
       <div class="air-grid" id="air-grid"></div>
+    </section>
+
+    <section class="panel news">
+      <div class="forecast-header">
+        <div>
+          <p class="eyebrow">Headlines</p>
+          <h2>Important news</h2>
+        </div>
+        <p id="news-summary">Loading news...</p>
+      </div>
+      <div class="news-layout">
+        <div class="news-column">
+          <h3>India</h3>
+          <div class="news-list" id="india-news"></div>
+        </div>
+        <div class="news-column">
+          <h3>International</h3>
+          <div class="news-list" id="world-news"></div>
+        </div>
+      </div>
     </section>
 
     <section class="panel forecast">
@@ -352,6 +430,19 @@
       ]
     };
 
+    const FALLBACK_NEWS = {
+      india: [
+        { title: "India market and policy updates will appear here when live headlines load.", source: "Built-in fallback", link: "#" },
+        { title: "National weather, transport, and civic headlines can be shown in this section.", source: "Built-in fallback", link: "#" },
+        { title: "Search for any city and keep an eye on important India stories alongside weather.", source: "Built-in fallback", link: "#" }
+      ],
+      world: [
+        { title: "International headlines will appear here when the live news feed is reachable.", source: "Built-in fallback", link: "#" },
+        { title: "Global politics, economy, and major world events can be displayed in this section.", source: "Built-in fallback", link: "#" },
+        { title: "This fallback keeps the layout usable even if the news service is unavailable.", source: "Built-in fallback", link: "#" }
+      ]
+    };
+
     const codeMap = [
       { codes: [0], label: "Clear sky", iconDay: "☀️", iconNight: "🌙", accent: "#ffb547", accentStrong: "#d98200", soft: "rgba(255, 181, 71, 0.20)" },
       { codes: [1, 2], label: "Mostly clear", iconDay: "🌤️", iconNight: "☁️", accent: "#f0a34a", accentStrong: "#cc7d16", soft: "rgba(240, 163, 74, 0.20)" },
@@ -371,6 +462,9 @@
       meta: document.getElementById("meta"),
       airSummary: document.getElementById("air-summary"),
       airGrid: document.getElementById("air-grid"),
+      newsSummary: document.getElementById("news-summary"),
+      indiaNews: document.getElementById("india-news"),
+      worldNews: document.getElementById("world-news"),
       status: document.getElementById("status"),
       forecast: document.getElementById("forecast-grid"),
       summary: document.getElementById("summary")
@@ -405,6 +499,15 @@
       return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     function describeAirQuality(aqi) {
       if (aqi <= 50) {
         return "Good";
@@ -430,6 +533,21 @@
         city: cityName || FALLBACK_DATA.city,
         region: cityName && cityName !== FALLBACK_DATA.city ? "Built-in sample forecast" : FALLBACK_DATA.region
       };
+    }
+
+    function renderNewsSection(container, items) {
+      container.innerHTML = items.map((item) => `
+        <a class="news-item" href="${escapeHtml(item.link || "#")}" ${item.link && item.link !== "#" ? 'target="_blank" rel="noreferrer"' : ""}>
+          <p>${escapeHtml(item.title)}</p>
+          <span>${escapeHtml(item.source || "News feed")}</span>
+        </a>
+      `).join("");
+    }
+
+    function renderNews(data, summaryText) {
+      renderNewsSection(els.indiaNews, data.india);
+      renderNewsSection(els.worldNews, data.world);
+      els.newsSummary.textContent = summaryText;
     }
 
     function renderWeather(data, statusMessage) {
@@ -526,6 +644,37 @@
       };
     }
 
+    async function fetchNewsFeed(url) {
+      const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`;
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        throw new Error("Unable to fetch news right now.");
+      }
+
+      const payload = await response.json();
+      if (payload.status !== "ok" || !Array.isArray(payload.items)) {
+        throw new Error("News feed returned an unexpected response.");
+      }
+
+      return payload.items.slice(0, 4).map((item) => ({
+        title: item.title,
+        source: item.author || payload.feed.title || "News feed",
+        link: item.link
+      }));
+    }
+
+    async function loadNews() {
+      try {
+        const [india, world] = await Promise.all([
+          fetchNewsFeed("https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"),
+          fetchNewsFeed("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
+        ]);
+        renderNews({ india, world }, "Live headlines from public RSS feeds");
+      } catch (error) {
+        renderNews(FALLBACK_NEWS, "Live news is unavailable, so you're seeing built-in fallback headlines");
+      }
+    }
+
     async function fetchForecast(location) {
       const params = new URLSearchParams({
         latitude: location.latitude,
@@ -597,7 +746,9 @@
 
     els.input.value = DEFAULT_CITY;
     renderWeather(FALLBACK_DATA, "Loading live data from Open-Meteo...");
+    renderNews(FALLBACK_NEWS, "Loading live headlines...");
     loadWeather(DEFAULT_CITY, true);
+    loadNews();
   </script>
 </body>
 </html>
